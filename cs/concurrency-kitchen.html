@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{color-scheme:light}*,*::before,*::after{box-sizing:border-box}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>后厨并发课</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a restaurant back-kitchen. Order tickets on a tiled wall, one reading column, wide stations for demos. */
+:root{
+  --bg:#eef2f4; --tile:#e2e8ec; --paper:#ffffff; --ink:#1d2a36; --muted:#5b6b78;
+  --line:#c9d3da; --mustard:#e0a91b; --mustard-soft:#fbefc9; --teal:#16807a; --teal-soft:#d4eeeb;
+  --tomato:#d1452f; --tomato-soft:#fadcd5; --code:#17222c; --code-fg:#e4ecf2;
+  --f-display:"ZCOOL KuaiLe","Noto Sans SC",system-ui,sans-serif;
+  --f-body:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121a21; --tile:#18222b; --paper:#1c2731; --ink:#e6edf2; --muted:#9aabb8;
+  --line:#2f3d49; --mustard:#f0bd3c; --mustard-soft:#3a3118; --teal:#3cbcb3; --teal-soft:#16332f;
+  --tomato:#f0705a; --tomato-soft:#3d2320; --code:#0c1217; --code-fg:#dbe5ec; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121a21; --tile:#18222b; --paper:#1c2731; --ink:#e6edf2; --muted:#9aabb8;
+  --line:#2f3d49; --mustard:#f0bd3c; --mustard-soft:#3a3118; --teal:#3cbcb3; --teal-soft:#16332f;
+  --tomato:#f0705a; --tomato-soft:#3d2320; --code:#0c1217; --code-fg:#dbe5ec; color-scheme:dark}
+
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.75;
+  background-image:linear-gradient(var(--tile) 1px,transparent 1px),linear-gradient(90deg,var(--tile) 1px,transparent 1px);
+  background-size:44px 44px}
+.wrap{max-width:860px;margin:0 auto;padding-inline:16px;padding-block:32px 80px;display:flex;flex-direction:column;gap:40px}
+h1,h2,h3{font-family:var(--f-display);font-weight:400;text-wrap:balance;line-height:1.25;margin:0}
+h1{font-size:clamp(2.2rem,7vw,3.6rem)}
+h2{font-size:clamp(1.6rem,4.5vw,2.1rem)}
+h3{font-size:1.25rem}
+p{margin:0}
+.prose{display:flex;flex-direction:column;gap:14px;max-width:66ch}
+.muted{color:var(--muted)}
+code{font-family:var(--f-mono);font-size:.88em;background:var(--mustard-soft);padding:1px 6px;border-radius:4px}
+b.p{color:var(--teal)} b.t{color:var(--tomato)}
+
+/* Ticket: the one framed object type on this page */
+.ticket{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:24px;position:relative;display:flex;flex-direction:column;gap:18px}
+.ticket::before{content:"";position:absolute;left:0;right:0;top:-1px;height:8px;
+  background:radial-gradient(circle at 6px 0,var(--bg) 5px,transparent 5.5px) 0 0/12px 8px repeat-x}
+.order{font-family:var(--f-mono);font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+
+/* Hero */
+.hero{display:flex;flex-direction:column;gap:16px;padding-top:12px}
+.hero .kicker{font-family:var(--f-mono);font-size:.8rem;letter-spacing:.14em;color:var(--teal)}
+.hero p{font-size:1.1rem;max-width:58ch}
+.stamp{display:inline-block;font-family:var(--f-display);color:var(--tomato);border:2px solid var(--tomato);padding:2px 12px;border-radius:4px;transform:rotate(-3deg);font-size:1.1rem;align-self:flex-start}
+
+/* Kitchens diagram */
+.kitchens{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.kitchen{border:2px dashed var(--teal);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--teal-soft)}
+.kitchen .name{font-family:var(--f-display);color:var(--teal);font-size:1.15rem}
+.fridge{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:.9rem}
+.chefs{display:flex;gap:8px;flex-wrap:wrap}
+.chef{background:var(--mustard-soft);border:1px solid var(--mustard);color:var(--ink);border-radius:20px;padding:2px 12px;font-size:.88rem;display:flex;align-items:center;gap:6px}
+.chef i{width:9px;height:9px;border-radius:50%;background:var(--mustard);display:inline-block;animation:bob 1.4s ease-in-out infinite}
+.chef:nth-child(2) i{animation-delay:.3s}.chef:nth-child(3) i{animation-delay:.6s}
+@keyframes bob{50%{transform:translateY(-4px)}}
+.legend{font-size:.9rem;color:var(--muted)}
+
+/* Table */
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:.95rem}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:500;color:var(--muted);font-size:.85rem;letter-spacing:.06em}
+td:first-child{font-weight:500;white-space:nowrap}
+
+/* Controls */
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;font-size:.92rem;cursor:pointer;border-radius:6px;padding:7px 14px;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
+button:hover{border-color:var(--ink)}
+button:focus-visible{outline:3px solid var(--mustard);outline-offset:2px}
+button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+button.go{background:var(--mustard);border-color:var(--mustard);color:#1d2a36;font-weight:500}
+
+/* Race demo */
+.stage{display:grid;grid-template-columns:1fr 1.1fr 1fr;gap:12px;align-items:stretch}
+@media (max-width:600px){.stage{grid-template-columns:1fr 1fr}.stage .wb{grid-column:1/-1;order:-1}}
+.actor{border:2px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center;transition:border-color .3s,background .3s}
+.actor.active{border-color:var(--mustard);background:var(--mustard-soft)}
+.actor .who{font-family:var(--f-display);font-size:1.15rem}
+.actor .cap{font-size:.78rem;color:var(--muted)}
+.bubble{font-family:var(--f-mono);font-size:1.5rem;font-weight:600;min-width:3.2em;padding:2px 10px;border-radius:14px;background:var(--paper);border:1px dashed var(--line);font-variant-numeric:tabular-nums}
+.wb{border:2px solid var(--ink);border-radius:8px;padding:12px;display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--paper)}
+.wb .num{font-family:var(--f-mono);font-size:2.6rem;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1;transition:color .3s}
+.wb .num.flash{color:var(--tomato)}
+.wb .cap{font-size:.78rem;color:var(--muted)}
+.lockpill{font-size:.8rem;padding:1px 10px;border-radius:12px;border:1px solid var(--line);color:var(--muted)}
+.lockpill.held{border-color:var(--teal);color:var(--teal);background:var(--teal-soft)}
+.facts{display:flex;gap:12px;flex-wrap:wrap}
+.fact{flex:1 1 150px;border:1px solid var(--line);border-radius:6px;padding:8px 12px;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.fact b{font-family:var(--f-mono);font-size:1.3rem;font-variant-numeric:tabular-nums}
+.fact span{font-size:.85rem;color:var(--muted)}
+.narr{font-size:1.05rem;min-height:3.4em;padding:10px 14px;border-left:4px solid var(--mustard);background:var(--mustard-soft);border-radius:0 6px 6px 0}
+.narr.bad{border-color:var(--tomato);background:var(--tomato-soft)}
+.ctrl{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ctrl label{font-size:.85rem;color:var(--muted);display:flex;gap:6px;align-items:center}
+select{font:inherit;font-size:.9rem;padding:5px 8px;border-radius:6px;border:1px solid var(--line);background:var(--paper);color:var(--ink)}
+.prog{font-family:var(--f-mono);font-size:.8rem;color:var(--muted);margin-left:auto}
+.log{font-family:var(--f-mono);font-size:.8rem;background:var(--code);color:var(--code-fg);border-radius:6px;padding:12px;height:180px;overflow:auto;min-width:0;line-height:1.6}
+.log .a{color:#f0bd3c}.log .b{color:#6fd3c9}.log .bad{color:#ff8a76;font-weight:600}.log .ok{color:#9be59b}
+.verdict{font-weight:500;padding:10px 14px;border-radius:6px}
+.verdict.bad{background:var(--tomato-soft);color:var(--tomato)}
+.verdict.ok{background:var(--teal-soft);color:var(--teal)}
+
+/* Timeline demo */
+.lanes{display:flex;flex-direction:column;gap:8px}
+.lane{display:grid;grid-template-columns:64px 1fr;gap:10px;align-items:center}
+.lane .lab{font-family:var(--f-mono);font-size:.78rem;color:var(--muted)}
+.track{position:relative;height:26px;background:var(--tile);border-radius:4px;overflow:hidden}
+.seg{position:absolute;top:3px;bottom:3px;border-radius:3px;transition:left .5s,width .5s,opacity .5s}
+.seg.cpu{background:var(--teal)} .seg.wait{background:repeating-linear-gradient(45deg,var(--mustard) 0 4px,transparent 4px 8px);border:1px solid var(--mustard)}
+.keyrow{display:flex;gap:16px;flex-wrap:wrap;font-size:.85rem;color:var(--muted)}
+.keyrow span{display:flex;gap:6px;align-items:center}
+.sw{width:14px;height:10px;border-radius:2px;display:inline-block}
+.total{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+/* Decision */
+.choose{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+.pick{border-top:4px solid var(--teal);background:var(--paper);padding:16px;border-radius:0 0 6px 6px;display:flex;flex-direction:column;gap:8px}
+.pick.t{border-color:var(--mustard)} .pick.x{border-color:var(--tomato)}
+.pick ul{margin:0;padding-left:1.1em;font-size:.94rem}
+
+/* Code */
+pre{margin:0;background:var(--code);color:var(--code-fg);border-radius:6px;padding:16px;overflow-x:auto;font-family:var(--f-mono);font-size:.84rem;line-height:1.6}
+pre .c{color:#7f93a3} pre .k{color:#f0bd3c} pre .s{color:#9be59b}
+.tabs{display:flex;gap:8px;flex-wrap:wrap}
+
+/* Pitfalls */
+.pits{display:flex;flex-direction:column;gap:0}
+.pit{display:grid;grid-template-columns:110px 1fr;gap:14px;padding:14px 0;border-bottom:1px dashed var(--line)}
+.pit:last-child{border-bottom:0}
+.pit .tag{font-family:var(--f-display);color:var(--tomato);font-size:1.1rem}
+@media (max-width:520px){.pit{grid-template-columns:1fr;gap:4px}}
+
+/* Quiz */
+.q{display:flex;flex-direction:column;gap:10px;padding-bottom:14px;border-bottom:1px dashed var(--line)}
+.q:last-child{border:0;padding-bottom:0}
+.q .opts{display:flex;gap:8px;flex-wrap:wrap}
+.q .fb{font-size:.92rem;min-height:1.4em}
+.q button.right{background:var(--teal-soft);border-color:var(--teal);color:var(--teal)}
+.q button.wrong{background:var(--tomato-soft);border-color:var(--tomato);color:var(--tomato)}
+
+@media (prefers-reduced-motion:reduce){.chef i{animation:none}.seg{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">ORDER #01 · 并发入门</div>
+  <h1>开一家餐厅，<br>学会多进程、多线程和异步</h1>
+  <p>电脑同时做好几件事，Python 里有三种办法：多进程、多线程、异步。这页用一家餐厅讲清楚它们：谁是厨房，谁是厨师，为什么厨师多了反而会出错，一个厨师怎么同时盯几口锅，以及到底该选哪个。</p>
+  <span class="stamp">15 分钟上菜</span>
+</header>
+
+<!-- 1 -->
+<section class="ticket">
+  <div class="order"><span>第一道 · 核心比喻</span><span>必读</span></div>
+  <h2>进程是厨房，线程是厨师</h2>
+  <div class="prose">
+    <p><b class="p">进程</b>是一间独立的厨房。它有自己的冰箱（内存）、自己的灶台和食材（文件、网络连接）。两间厨房互相看不到对方冰箱里有什么。</p>
+    <p><b class="t">线程</b>是厨房里干活的厨师。一间厨房至少有一个厨师。同一间厨房的厨师共用一个冰箱，谁都能伸手拿东西。</p>
+  </div>
+  <div class="kitchens" aria-label="两个进程，各自有线程">
+    <div class="kitchen">
+      <div class="name">厨房 A（进程 1）</div>
+      <div class="fridge">冰箱：鸡蛋 × 12，牛肉 × 3</div>
+      <div class="chefs"><span class="chef"><i></i>厨师 1</span><span class="chef"><i></i>厨师 2</span><span class="chef"><i></i>厨师 3</span></div>
+    </div>
+    <div class="kitchen">
+      <div class="name">厨房 B（进程 2）</div>
+      <div class="fridge">冰箱：鸡蛋 × 12，牛肉 × 3</div>
+      <div class="chefs"><span class="chef"><i></i>厨师 1</span></div>
+    </div>
+  </div>
+  <p class="legend">两个冰箱内容一样，但是是两份。厨房 A 拿走一个鸡蛋，厨房 B 不受影响。</p>
+  <div class="prose">
+    <p>这一个比喻能推出几乎所有区别：</p>
+    <p>开一间新厨房很贵（要装修、买冰箱），所以<b class="p">创建进程开销大</b>。多招一个厨师很便宜，所以<b class="t">创建线程开销小</b>。</p>
+    <p>一间厨房着火，隔壁厨房照常营业，所以<b class="p">进程互相隔离，更安全</b>。一个厨师打翻油锅，整间厨房都完了，所以<b class="t">一个线程崩溃会带走整个进程</b>。</p>
+    <p>厨师之间喊一声就能交接，所以<b class="t">线程通信简单</b>。厨房之间要派服务员跑腿传菜，所以<b class="p">进程通信要靠管道、队列、共享内存</b>。</p>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="ticket">
+  <div class="order"><span>第二道 · 对照表</span><span>收藏</span></div>
+  <h2>一张表看完区别</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>对比项</th><th>多进程</th><th>多线程</th><th>异步 asyncio</th></tr></thead>
+    <tbody>
+      <tr><td>比喻</td><td>开多间厨房</td><td>一间厨房多个厨师</td><td>一个厨师盯多口锅</td></tr>
+      <tr><td>内存</td><td>各自独立</td><td>同一进程内共享</td><td>只有一个线程，天然共享</td></tr>
+      <tr><td>创建开销</td><td>大（毫秒级）</td><td>小（微秒级）</td><td>极小，开上万个协程也没事</td></tr>
+      <tr><td>谁决定切换</td><td>操作系统</td><td>操作系统，随时可能被打断</td><td>代码自己，只在 <code>await</code> 处切换</td></tr>
+      <tr><td>数据安全</td><td>天然隔离</td><td>容易抢数据，需要加锁</td><td>基本不用锁</td></tr>
+      <tr><td>能否真并行算</td><td>能，每个进程一把 GIL</td><td>不能，受 GIL 限制</td><td>不能，只有一个线程</td></tr>
+      <tr><td>适合</td><td>CPU 密集：算因子、回测</td><td>IO 密集，且要用普通阻塞库</td><td>IO 密集且量很大：成千上万个请求</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 3 -->
+<section class="ticket">
+  <div class="order"><span>第三道 · 动手试试</span><span>互动</span></div>
+  <h2>两个厨师，一块白板</h2>
+  <div class="prose">
+    <p>线程共享内存，好处是方便，坏处是会抢。来看一个具体场景。</p>
+    <p>后厨墙上有一块白板，写着<b>“今天出了几道菜”</b>。这块白板就是一个共享变量。两个厨师（两个线程）每做好一道菜，都要去白板上把数字加 1。</p>
+    <p>问题在于，“加 1”不是一个动作，而是三个动作：</p>
+    <p>① <b>看</b>：抬头看白板上的数，记在心里。<br>② <b>算</b>：做好菜，心里算出“这个数 + 1”。<br>③ <b>写</b>：擦掉白板，写上心里算好的新数。</p>
+    <p>如果厨师 1 刚看完，还没写回去，厨师 2 也来看了，两人心里记的是<b>同一个旧数</b>。后面两人各自写回“旧数 + 1”，第二个人写的就把第一个人的盖掉了。明明出了两道菜，白板只加了 1。<b>菜没少，少的是记录。</b>这就叫<b class="t">竞态条件</b>，Python 里的 <code>count += 1</code> 就有这个问题。</p>
+  </div>
+
+  <div class="ctrl">
+    <button class="go" id="rcSlow" type="button">慢动作：看一次出错</button>
+    <button id="rcNo" type="button">不加锁，各做 5 道</button>
+    <button id="rcLock" type="button">加锁，各做 5 道</button>
+  </div>
+
+  <div class="stage">
+    <div class="actor" id="act0"><div class="who">厨师 1</div><div class="cap">心里记的数</div><div class="bubble" id="h0">·</div><div class="cap" id="d0">待命</div></div>
+    <div class="wb"><div class="cap">白板：今天出了几道菜</div><div class="num" id="wb">0</div><span class="lockpill" id="lk">白板钥匙：挂在墙上</span></div>
+    <div class="actor" id="act1"><div class="who">厨师 2</div><div class="cap">心里记的数</div><div class="bubble" id="h1">·</div><div class="cap" id="d1">待命</div></div>
+  </div>
+
+  <div class="facts">
+    <div class="fact"><span>真正做好的菜</span><b id="made">0</b></div>
+    <div class="fact"><span>白板记录</span><b id="wb2">0</b></div>
+    <div class="fact"><span>漏记</span><b id="lost">0</b></div>
+  </div>
+
+  <div class="narr" id="narr" aria-live="polite">先点“慢动作”，一步一步看一次漏记是怎么发生的。</div>
+
+  <div class="ctrl">
+    <button id="rcPause" type="button" disabled>暂停</button>
+    <button id="rcStep" type="button" disabled>下一步</button>
+    <label for="rcSpeed">速度
+      <select id="rcSpeed"><option value="2600">很慢</option><option value="1700" selected>慢</option><option value="1000">中</option><option value="500">快</option></select>
+    </label>
+    <span class="prog" id="prog"></span>
+  </div>
+
+  <div class="log" id="raceLog">步骤记录会出现在这里。</div>
+  <div class="verdict" id="verdict" hidden></div>
+  <div class="prose">
+    <p><b>锁（Lock）</b>就像白板旁边挂的一把钥匙。谁拿到钥匙，谁才能走完“看、算、写”三步，写完再把钥匙挂回去。另一个厨师只能等。这样三步就变成一个不可打断的整体，代价是要排队，速度会慢一些。</p>
+  </div>
+</section>
+
+<!-- 4 -->
+<section class="ticket">
+  <div class="order"><span>第四道 · Python 特色菜</span><span>重点</span></div>
+  <h2>GIL：整间厨房只有一把锅铲</h2>
+  <div class="prose">
+    <p>CPython 有一把全局解释器锁，叫 <b>GIL</b>。你可以把它想成：一间厨房无论有多少厨师，只有一把锅铲。谁拿着锅铲，谁才能炒菜（执行 Python 字节码）。</p>
+    <p>所以炒菜（纯计算）的时候，开 4 个线程也只能一个一个轮流炒，几乎没有提速。但如果厨师在<b>等水烧开</b>（等网络、等磁盘），他会把锅铲放下，别人就能接着炒。所以等待多的任务，多线程依然很有用。</p>
+    <p>多进程是开 4 间厨房，每间都有自己的锅铲，可以真正同时炒。</p>
+  </div>
+  <div class="btns" role="group" aria-label="切换场景">
+    <button class="on" data-mode="tcpu" type="button">多线程 · 纯计算</button>
+    <button data-mode="pcpu" type="button">多进程 · 纯计算</button>
+    <button data-mode="tio" type="button">多线程 · 等待多</button>
+    <button data-mode="aio" type="button">异步 · 等待多</button>
+  </div>
+  <div class="lanes" id="lanes"></div>
+  <div class="keyrow">
+    <span><i class="sw" style="background:var(--teal)"></i>拿着锅铲在算</span>
+    <span><i class="sw" style="background:repeating-linear-gradient(45deg,var(--mustard) 0 3px,transparent 3px 6px);border:1px solid var(--mustard)"></i>等水烧开（IO）</span>
+    <span class="total" id="total"></span>
+  </div>
+  <p class="muted" id="modeNote"></p>
+  <p class="muted">补充：NumPy、Pandas 的很多底层运算在 C 里执行时会释放 GIL，所以多线程跑大块向量运算有时也能提速。另外 Python 3.13 起有实验性的无 GIL 版本，但目前主流环境仍然有 GIL。</p>
+</section>
+
+<!-- 4b async -->
+<section class="ticket">
+  <div class="order"><span>第五道 · 第三种做法</span><span>新增</span></div>
+  <h2>异步：一个厨师盯三口锅</h2>
+  <div class="prose">
+    <p>想象一个很会安排的厨师。他把汤放上灶，不站着等，转身去切菜；切到一半，蒸锅的计时器响了，他去开锅；然后回来继续切。整个过程只有<b>一个人</b>，但三道菜同时在推进。</p>
+    <p>这就是<b class="p">异步</b>。在 Python 里，用 <code>async def</code> 定义的函数叫<b>协程</b>，相当于一道菜。<code>await</code> 就是厨师说“这里要等一会，我先去忙别的”。负责安排厨师在各口锅之间跑来跑去的，叫<b>事件循环</b>。</p>
+    <p>和多线程最大的区别：多线程是操作系统随时把厨师拽走，可能拽在三步操作中间，所以要加锁。异步是厨师自己决定只在 <code>await</code> 时离开，所以中间不会被打断，基本不需要锁。</p>
+  </div>
+  <div class="pits">
+    <div class="pit"><div class="tag">一个前提</div><p>锅必须是“会自己响”的。也就是说，等待的那一步要用支持异步的库，比如 <code>aiohttp</code>、<code>asyncio.sleep</code>。如果你在协程里写了 <code>time.sleep</code> 或 <code>requests.get</code>，厨师就会傻站在锅前，其他锅全部停摆。</p></div>
+    <div class="pit"><div class="tag">不能算</div><p>异步只有一个线程，对纯计算没有任何帮助。在协程里跑一段很重的 NumPy 计算，整个事件循环都会卡住。</p></div>
+    <div class="pit"><div class="tag">会传染</div><p>只要调用了 <code>async</code> 函数，调用它的函数通常也得变成 <code>async</code>。所以异步更适合从一开始就这样设计的程序，比如爬虫、接收实时行情、网络服务。</p></div>
+  </div>
+</section>
+
+<!-- 4c ways -->
+<section class="ticket">
+  <div class="order"><span>第六道 · 多进程的几种写法</span><span>工具箱</span></div>
+  <h2>Python 里开厨房的几种方式</h2>
+  <div class="prose">
+    <p>多进程不止一种写法。它们底层都是开新进程，区别在于用起来顺不顺手。从推荐程度排：</p>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>写法</th><th>一句话</th><th>什么时候用</th></tr></thead>
+    <tbody>
+      <tr><td><code>ProcessPoolExecutor</code></td><td>请一个厨房经理，你只管下单，他分配厨房</td><td>首选。接口和线程池一样，换一个词就能在线程和进程之间切换</td></tr>
+      <tr><td><code>multiprocessing.Pool</code></td><td>老牌厨房经理，功能更多</td><td>需要 <code>imap_unordered</code>、<code>starmap</code> 这类花样时</td></tr>
+      <tr><td><code>multiprocessing.Process</code></td><td>自己一间间开厨房，自己管</td><td>进程数量很少，每个进程干的活不一样，比如一个收数据一个写库</td></tr>
+      <tr><td><code>Queue</code> / <code>Pipe</code></td><td>厨房之间的传菜口</td><td>进程之间要持续传消息，比如生产者和消费者</td></tr>
+      <tr><td><code>shared_memory</code> / <code>Manager</code></td><td>几间厨房共用一个大冷库</td><td>大数组不想每个进程都复制一份</td></tr>
+      <tr><td><code>joblib.Parallel</code></td><td>第三方的便捷经理</td><td>scikit-learn 生态，写一行就能并行一个循环</td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted">线程这边对应的是 <code>ThreadPoolExecutor</code>（首选）和 <code>threading.Thread</code>（手动管理）。</p>
+</section>
+
+<!-- 5 -->
+<section class="ticket">
+  <div class="order"><span>第七道 · 点菜指南</span><span>决策</span></div>
+  <h2>到底选哪个</h2>
+  <div class="choose">
+    <div class="pick">
+      <h3>选多进程</h3>
+      <ul>
+        <li>任务主要在算：因子计算、回测、蒙特卡洛</li>
+        <li>任务之间互相独立，比如按股票或按日期拆开</li>
+        <li>希望一个任务崩了不影响其他</li>
+      </ul>
+    </div>
+    <div class="pick t">
+      <h3>选多线程</h3>
+      <ul>
+        <li>任务主要在等：下载行情、调接口、读很多小文件</li>
+        <li>需要频繁共享同一份数据</li>
+        <li>要用的库是普通阻塞库，比如 requests</li>
+      </ul>
+    </div>
+    <div class="pick">
+      <h3>选异步</h3>
+      <ul>
+        <li>要同时发成百上千个网络请求</li>
+        <li>长时间挂着接收实时行情、WebSocket</li>
+        <li>用到的库有异步版本</li>
+      </ul>
+    </div>
+    <div class="pick x">
+      <h3>先别急着并发</h3>
+      <ul>
+        <li>能向量化的先用 NumPy 向量化</li>
+        <li>任务很小，开进程的开销比任务本身还大</li>
+        <li>瓶颈在磁盘或数据库，加人也没用</li>
+      </ul>
+    </div>
+  </div>
+  <p class="muted">一句话口诀：<b>算得多开厨房，等得多招厨师，等得特别多就让一个厨师盯多口锅。</b></p>
+</section>
+
+<!-- 6 -->
+<section class="ticket">
+  <div class="order"><span>第八道 · 菜谱</span><span>代码</span></div>
+  <h2>ProcessPoolExecutor 常用写法</h2>
+  <div class="prose">
+    <p><code>ProcessPoolExecutor</code> 就是厨房经理：你下单，他把单分给几间厨房。下面是最常用的几个函数，每段代码都能直接运行。把 <code>ProcessPoolExecutor</code> 换成 <code>ThreadPoolExecutor</code>，用法完全一样。</p>
+  </div>
+  <div class="tbl"><table>
+    <thead><tr><th>函数</th><th>比喻</th><th>什么时候用</th></tr></thead>
+    <tbody>
+      <tr><td><code>ex.map(fn, items)</code></td><td>一次下一摞单，按单号顺序出菜</td><td>最常见。一堆输入，函数相同，要结果顺序和输入一致</td></tr>
+      <tr><td><code>ex.submit(fn, *args)</code></td><td>单独下一张单，拿回一张取餐小票</td><td>每个任务参数不同，或者想单独查看某个任务</td></tr>
+      <tr><td><code>fut.result(timeout)</code></td><td>凭小票取餐，没做好就站着等</td><td>拿结果，子进程的异常也会在这里抛出</td></tr>
+      <tr><td><code>as_completed(futs)</code></td><td>谁先做好先端谁</td><td>任务耗时差别大，想边做边处理或显示进度</td></tr>
+      <tr><td><code>wait(futs, return_when)</code></td><td>等一批单，到条件就停下</td><td>只要第一份结果，或者最多等几秒</td></tr>
+      <tr><td><code>initializer</code></td><td>厨房开张前先备料</td><td>每个进程只读一次大表或模型，不要每个任务都传</td></tr>
+      <tr><td><code>add_done_callback</code></td><td>菜做好时自动按铃</td><td>做完后自动记日志、更新进度</td></tr>
+      <tr><td><code>shutdown(cancel_futures)</code></td><td>打烊，没开始的单不做了</td><td>出错时提前收工</td></tr>
+    </tbody>
+  </table></div>
+  <div class="tabs" role="tablist">
+    <button class="on" data-code="p1" type="button" role="tab">map</button>
+    <button data-code="p2" type="button" role="tab">submit + result</button>
+    <button data-code="p3" type="button" role="tab">as_completed</button>
+    <button data-code="p4" type="button" role="tab">wait</button>
+    <button data-code="p5" type="button" role="tab">initializer</button>
+    <button data-code="p6" type="button" role="tab">异常、回调、取消</button>
+    <button data-code="c4" type="button" role="tab">异步下载</button>
+    <button data-code="c3" type="button" role="tab">加锁</button>
+  </div>
+<pre id="p1"><span class="c"># map：最常用。按输入顺序返回结果，像按单号出菜</span>
+<span class="k">from</span> concurrent.futures <span class="k">import</span> ProcessPoolExecutor
+<span class="k">import</span> numpy <span class="k">as</span> np
+
+<span class="k">def</span> calc_factor(code):
+    x = np.random.default_rng(int(code[:6])).standard_normal(1_000_000).cumsum()
+    <span class="k">return</span> x.std()
+
+<span class="k">if</span> __name__ == <span class="s">&quot;__main__&quot;</span>:
+    codes = [<span class="s">f&quot;{i:06d}.SZ&quot;</span> <span class="k">for</span> i <span class="k">in</span> range(1, 41)]
+    <span class="k">with</span> ProcessPoolExecutor(max_workers=8) <span class="k">as</span> ex:
+        <span class="c"># chunksize：一次给每个厨房派 4 张单，减少来回传菜的开销</span>
+        values = list(ex.map(calc_factor, codes, chunksize=4))
+    <span class="k">for</span> c, v <span class="k">in</span> list(zip(codes, values))[:3]:
+        print(c, round(v, 2))
+
+    <span class="c"># 多个参数：传多个可迭代对象，按位置一一配对</span>
+    <span class="k">with</span> ProcessPoolExecutor() <span class="k">as</span> ex:
+        print(list(ex.map(pow, [2, 3, 4], [10, 2, 3])))   <span class="c"># [1024, 9, 64]</span></pre>
+<pre id="p2" hidden><span class="c"># submit：单独下一张单，马上拿到一张取餐小票（Future）</span>
+<span class="k">from</span> concurrent.futures <span class="k">import</span> ProcessPoolExecutor
+<span class="k">import</span> time
+
+<span class="k">def</span> backtest(name, window):
+    time.sleep(1)                          <span class="c"># 假装在跑回测</span>
+    <span class="k">return</span> <span class="s">f&quot;{name} window={window} sharpe={window / 10:.2f}&quot;</span>
+
+<span class="k">if</span> __name__ == <span class="s">&quot;__main__&quot;</span>:
+    <span class="k">with</span> ProcessPoolExecutor(max_workers=4) <span class="k">as</span> ex:
+        fut = ex.submit(backtest, <span class="s">&quot;momentum&quot;</span>, window=20)   <span class="c"># 可以传关键字参数</span>
+        print(fut.done())                  <span class="c"># False：还在做</span>
+        print(fut.result())                <span class="c"># 阻塞等待，直到拿到结果</span>
+        print(fut.done())                  <span class="c"># True</span>
+
+        <span class="c"># 一次下很多单，用字典记住每张小票对应哪个参数</span>
+        futs = {ex.submit(backtest, <span class="s">&quot;reversal&quot;</span>, w): w <span class="k">for</span> w <span class="k">in</span> (5, 10, 20, 60)}
+        <span class="k">for</span> f, w <span class="k">in</span> futs.items():
+            print(w, <span class="s">&quot;-&gt;&quot;</span>, f.result(timeout=10))   <span class="c"># 最多等 10 秒，超时抛 TimeoutError</span></pre>
+<pre id="p3" hidden><span class="c"># as_completed：谁先做好先端谁，不按下单顺序</span>
+<span class="k">from</span> concurrent.futures <span class="k">import</span> ProcessPoolExecutor, as_completed
+<span class="k">import</span> random, time
+
+<span class="k">def</span> load_day(day):
+    time.sleep(random.uniform(0.2, 1.5))   <span class="c"># 每天的数据量不同，耗时不同</span>
+    <span class="k">return</span> day, random.randint(1000, 5000)
+
+<span class="k">if</span> __name__ == <span class="s">&quot;__main__&quot;</span>:
+    days = [<span class="s">f&quot;2026-10-{d:02d}&quot;</span> <span class="k">for</span> d <span class="k">in</span> range(1, 11)]
+    <span class="k">with</span> ProcessPoolExecutor(max_workers=4) <span class="k">as</span> ex:
+        futs = [ex.submit(load_day, d) <span class="k">for</span> d <span class="k">in</span> days]
+        <span class="k">for</span> i, f <span class="k">in</span> enumerate(as_completed(futs), 1):
+            day, rows = f.result()
+            print(<span class="s">f&quot;[{i}/{len(days)}] {day} 完成，{rows} 行&quot;</span>)   <span class="c"># 适合配进度条</span></pre>
+<pre id="p4" hidden><span class="c"># wait：等一批单，可以选“全部做完”、“第一份做完”或“第一个出错”</span>
+<span class="k">from</span> concurrent.futures <span class="k">import</span> (ProcessPoolExecutor, wait,
+                                ALL_COMPLETED, FIRST_COMPLETED, FIRST_EXCEPTION)
+<span class="k">import</span> time
+
+<span class="k">def</span> cook(sec):
+    time.sleep(sec)
+    <span class="k">return</span> sec
+
+<span class="k">if</span> __name__ == <span class="s">&quot;__main__&quot;</span>:
+    <span class="k">with</span> ProcessPoolExecutor() <span class="k">as</span> ex:
+        futs = [ex.submit(cook, s) <span class="k">for</span> s <span class="k">in</span> (3, 1, 2)]
+
+        done, not_done = wait(futs, return_when=FIRST_COMPLETED)
+        print(<span class="s">&quot;最先做好：&quot;</span>, [f.result() <span class="k">for</span> f <span class="k">in</span> done])        <span class="c"># [1]</span>
+
+        done, not_done = wait(futs, timeout=1.5)               <span class="c"># 最多等 1.5 秒</span>
+        print(<span class="s">&quot;1.5 秒内做好&quot;</span>, len(done), <span class="s">&quot;份，还剩&quot;</span>, len(not_done), <span class="s">&quot;份&quot;</span>)
+
+        done, _ = wait(futs, return_when=ALL_COMPLETED)        <span class="c"># 默认就是这个</span>
+        print(<span class="s">&quot;全部完成：&quot;</span>, sorted(f.result() <span class="k">for</span> f <span class="k">in</span> done))</pre>
+<pre id="p5" hidden><span class="c"># initializer：每间厨房开张时先做一次准备，比如把大表读进内存</span>
+<span class="k">from</span> concurrent.futures <span class="k">import</span> ProcessPoolExecutor
+<span class="k">import</span> os
+
+_table = <span class="k">None</span>                              <span class="c"># 每个子进程各有一份</span>
+
+<span class="k">def</span> init_worker(path):
+    <span class="k">global</span> _table
+    _table = {<span class="s">&quot;000001.SZ&quot;</span>: 1.2, <span class="s">&quot;600000.SH&quot;</span>: 0.8}   <span class="c"># 实际可以 pd.read_parquet(path)</span>
+    print(<span class="s">f&quot;进程 {os.getpid()} 准备好了，读入 {path}&quot;</span>)
+
+<span class="k">def</span> lookup(code):
+    <span class="k">return</span> code, _table.get(code), os.getpid()
+
+<span class="k">if</span> __name__ == <span class="s">&quot;__main__&quot;</span>:
+    codes = [<span class="s">&quot;000001.SZ&quot;</span>, <span class="s">&quot;600000.SH&quot;</span>] * 4
+    <span class="k">with</span> ProcessPoolExecutor(max_workers=2,
+                             initializer=init_worker,
+                             initargs=(<span class="s">&quot;factors.parquet&quot;</span>,)) <span class="k">as</span> ex:
+        <span class="k">for</span> r <span class="k">in</span> ex.map(lookup, codes):
+            print(r)
+    <span class="c"># 好处：大表每个进程只读一次，而不是每个任务都重新传一遍</span></pre>
+<pre id="p6" hidden><span class="c"># 异常、回调、取消：后厨出事了怎么办</span>
+<span class="k">from</span> concurrent.futures <span class="k">import</span> ProcessPoolExecutor, as_completed
+<span class="k">import</span> multiprocessing <span class="k">as</span> mp
+
+<span class="k">def</span> risky(x):
+    <span class="k">if</span> x == 3:
+        <span class="k">raise</span> ValueError(<span class="s">f&quot;第 {x} 道菜烧糊了&quot;</span>)
+    <span class="k">return</span> x * 10
+
+<span class="k">def</span> on_done(fut):                           <span class="c"># 回调在主进程里执行</span>
+    <span class="k">if</span> fut.exception() <span class="k">is</span> <span class="k">None</span>:
+        print(<span class="s">&quot;回调：做好了&quot;</span>, fut.result())
+
+<span class="k">if</span> __name__ == <span class="s">&quot;__main__&quot;</span>:
+    ctx = mp.get_context(<span class="s">&quot;spawn&quot;</span>)           <span class="c"># 明确指定启动方式，Mac 和 Linux 行为一致</span>
+    <span class="k">with</span> ProcessPoolExecutor(max_workers=2, mp_context=ctx) <span class="k">as</span> ex:
+        futs = []
+        <span class="k">for</span> x <span class="k">in</span> range(6):
+            f = ex.submit(risky, x)
+            f.add_done_callback(on_done)
+            futs.append(f)
+
+        <span class="k">for</span> f <span class="k">in</span> as_completed(futs):
+            <span class="k">try</span>:
+                f.result()                  <span class="c"># 子进程里的异常会在这里重新抛出</span>
+            <span class="k">except</span> ValueError <span class="k">as</span> e:
+                print(<span class="s">&quot;捕获到：&quot;</span>, e)
+
+    <span class="c"># 不用 with 时要自己关：cancel_futures=True 会丢掉还没开始的单（Python 3.9+）</span>
+    ex = ProcessPoolExecutor(max_workers=2)
+    futs = [ex.submit(risky, x) <span class="k">for</span> x <span class="k">in</span> range(100)]
+    ex.shutdown(wait=True, cancel_futures=True)
+    print(<span class="s">&quot;被取消的单：&quot;</span>, sum(f.cancelled() <span class="k">for</span> f <span class="k">in</span> futs))</pre>
+<pre id="c4" hidden><span class="k">import</span> asyncio, time
+
+<span class="k">async def</span> download(day):
+    <span class="k">await</span> asyncio.sleep(1)            <span class="c"># 换成 aiohttp 请求也一样；await 处让出厨师</span>
+    <span class="k">return</span> <span class="s">f"{day} done"</span>
+
+<span class="k">async def</span> main():
+    days = [<span class="s">f"2026-10-{d:02d}"</span> <span class="k">for</span> d <span class="k">in</span> range(1, 31)]
+    sem = asyncio.Semaphore(10)         <span class="c"># 最多同时 10 口锅，防止把接口打爆</span>
+    <span class="k">async def</span> limited(d):
+        <span class="k">async with</span> sem:
+            <span class="k">return await</span> download(d)
+    <span class="k">return await</span> asyncio.gather(*(limited(d) <span class="k">for</span> d <span class="k">in</span> days))
+
+t0 = time.time()
+print(asyncio.run(main()))              <span class="c"># 启动事件循环</span>
+print(<span class="s">f"耗时 {time.time()-t0:.1f}s"</span>)    <span class="c"># 30 个任务、每次 10 个，约 3 秒</span>
+<span class="c"># 注意：在 Jupyter 里已经有事件循环，直接写 await main() 即可</span></pre>
+<pre id="c3" hidden><span class="k">import</span> threading
+
+eggs = 0
+lock = threading.Lock()
+
+<span class="k">def</span> put_eggs(n):
+    <span class="k">global</span> eggs
+    <span class="k">for</span> _ <span class="k">in</span> range(n):
+        <span class="k">with</span> lock:                     <span class="c"># 拿钥匙，做完自动还</span>
+            eggs += 1
+
+ts = [threading.Thread(target=put_eggs, args=(100_000,)) <span class="k">for</span> _ <span class="k">in</span> range(4)]
+<span class="k">for</span> t <span class="k">in</span> ts: t.start()
+<span class="k">for</span> t <span class="k">in</span> ts: t.join()               <span class="c"># 等所有厨师下班</span>
+print(eggs)                           <span class="c"># 一定是 400000</span></pre>
+</section>
+
+<!-- 7 -->
+<section class="ticket">
+  <div class="order"><span>第九道 · 后厨事故簿</span><span>避坑</span></div>
+  <h2>常见的坑</h2>
+  <div class="pits">
+    <div class="pit"><div class="tag">死锁</div><p>厨师 1 拿着盐等酱油，厨师 2 拿着酱油等盐，两人永远等下去。解决办法：所有人按同一个顺序拿锁，或者尽量只用一把锁。</p></div>
+    <div class="pit"><div class="tag">忘写 main</div><p>在 Mac 和 Windows 上，子进程会重新导入你的脚本。不加 <code>if __name__ == "__main__":</code>，就会无限开厨房，直接报错。</p></div>
+    <div class="pit"><div class="tag">传不过去</div><p>进程之间传数据要先 pickle 打包。lambda、打开的文件句柄、数据库连接都打包不了。传大 DataFrame 也很慢，最好让子进程自己按路径读文件。</p></div>
+    <div class="pit"><div class="tag">改了没用</div><p>子进程里修改全局变量，主进程看不到。因为改的是自己厨房冰箱里的那一份。想拿结果，用返回值或 Queue。</p></div>
+    <div class="pit"><div class="tag">开太多</div><p>进程数超过 CPU 核数，大家抢核心，反而更慢。计算任务一般设成核数，比如 <code>os.cpu_count()</code>。</p></div>
+    <div class="pit"><div class="tag">嵌套并行</div><p>NumPy 底层的 BLAS 自己也会开多线程。8 个进程各开 8 个线程就是 64 个，服务器会卡住。可以设置 <code>OMP_NUM_THREADS=1</code>。</p></div>
+  </div>
+</section>
+
+<!-- 8 -->
+<section class="ticket">
+  <div class="order"><span>甜点 · 小测验</span><span>4 题</span></div>
+  <h2>出餐前自测</h2>
+  <div class="q" data-ans="b">
+    <p>1. 要用 Python 给 5000 只股票各算一个复杂因子，选什么？</p>
+    <div class="opts"><button data-v="a" type="button">多线程</button><button data-v="b" type="button">多进程</button></div>
+    <p class="fb" data-ok="对。纯计算任务受 GIL 限制，开多间厨房才能真并行。" data-no="不对。纯计算时线程要抢同一把锅铲，几乎不提速。"></p>
+  </div>
+  <div class="q" data-ans="a">
+    <p>2. 要从接口拉 300 天的行情，每次请求要等 0.5 秒，选什么？</p>
+    <div class="opts"><button data-v="a" type="button">多线程</button><button data-v="b" type="button">多进程</button></div>
+    <p class="fb" data-ok="对。时间都花在等待上，等的时候 GIL 会被释放，线程便宜又够用。" data-no="能用，但没必要。主要在等网络，招厨师比开厨房便宜得多。"></p>
+  </div>
+  <div class="q" data-ans="b">
+    <p>3. 子进程里执行了 <code>results.append(x)</code>，主进程的 results 会变吗？</p>
+    <div class="opts"><button data-v="a" type="button">会</button><button data-v="b" type="button">不会</button></div>
+    <p class="fb" data-ok="对。子进程改的是自己那份拷贝。要用返回值或 Queue 把结果带回来。" data-no="不会。每间厨房的冰箱是独立的，改的是子进程自己那份。"></p>
+  </div>
+  <div class="q" data-ans="b">
+    <p>4. 在 <code>async def</code> 里用 <code>requests.get</code> 发了 100 个请求，会很快吗？</p>
+    <div class="opts"><button data-v="a" type="button">会</button><button data-v="b" type="button">不会</button></div>
+    <p class="fb" data-ok="对。requests 是阻塞的，厨师会傻站着等，100 个请求还是一个接一个。要换成 aiohttp 或 httpx 的异步接口。" data-no="不会。requests 不会 await，厨师站在锅前不走，其他协程全部排队。"></p>
+  </div>
+</section>
+
+</div>
+
+<script>
+(function(){
+  /* ---------- Race demo ---------- */
+  const $=id=>document.getElementById(id);
+  const R={steps:[],i:0,board:0,read:[null,null],head:[null,null],made:0,key:null,timer:null,paused:false,start:0};
+  const NAME=['厨师 1','厨师 2'];
+  function slowScript(){return {start:5,steps:[
+    {c:0,k:'read'},{c:1,k:'read'},{c:0,k:'cook'},{c:0,k:'write'},{c:1,k:'cook'},{c:1,k:'write'}]};}
+  function randomScript(useLock){
+    const steps=[];
+    if(useLock){
+      const left=[5,5];
+      while(left[0]+left[1]){let c=Math.random()<.5?0:1; if(!left[c]) c=1-c; left[c]--;
+        steps.push({c,k:'lock'},{c,k:'read'},{c,k:'cook'},{c,k:'write'},{c,k:'unlock'});}
+      return {start:0,steps};
+    }
+    const left=[15,15], pos=[0,0]; let c=0;
+    while(left[0]+left[1]){
+      if(Math.random()<.55) c=1-c; if(!left[c]) c=1-c;
+      steps.push({c,k:['read','cook','write'][pos[c]%3]}); pos[c]++; left[c]--;
+    }
+    return {start:0,steps};
+  }
+  function render(active){
+    $('wb').textContent=R.board; $('wb2').textContent=R.board; $('made').textContent=R.made;
+    $('lost').textContent=R.lostN||0;
+    for(let c=0;c<2;c++){$('h'+c).textContent=R.head[c]==null?'·':R.head[c];
+      $('act'+c).classList.toggle('active',active===c);}
+    const lk=$('lk'); lk.classList.toggle('held',R.key!=null);
+    lk.textContent=R.key==null?'白板钥匙：挂在墙上':`白板钥匙：在${NAME[R.key]}手里`;
+    $('prog').textContent=R.steps.length?`第 ${R.i} / ${R.steps.length} 步`:'';
+  }
+  function say(text,bad){const n=$('narr'); n.textContent=text; n.classList.toggle('bad',!!bad);}
+  function logLine(text,cls){const lg=$('raceLog'); if(R.i===1) lg.innerHTML='';
+    const d=document.createElement('div'); d.className=cls; d.textContent=text; lg.appendChild(d); lg.scrollTop=lg.scrollHeight;}
+  function step(){
+    if(R.i>=R.steps.length) return finish();
+    const o=R.steps[R.i++], c=o.c, who=NAME[c], cls=c?'b':'a';
+    let t='', bad=false;
+    if(o.k==='lock'){R.key=c; t=`${who} 拿起钥匙。现在只有他能碰白板。`;}
+    else if(o.k==='unlock'){R.key=null; t=`${who} 把钥匙挂回墙上。`;}
+    else if(o.k==='read'){R.read[c]=R.board; R.head[c]=R.board; $('d'+c).textContent='看过白板';
+      t=`① ${who} 看白板：${R.board}。他把 ${R.board} 记在心里。`;
+      const o2=1-c; if(R.read[o2]!=null && R.key==null){t+=` 注意：${NAME[o2]}心里也记着 ${R.read[o2]}，还没写回去。`; if(R.read[o2]===R.board) bad=true;}}
+    else if(o.k==='cook'){R.made++; R.head[c]=R.read[c]+1; $('d'+c).textContent='菜做好了';
+      t=`② ${who} 做好一道菜，心里算：${R.read[c]} + 1 = ${R.read[c]+1}。`;}
+    else { const lostNow=R.board!==R.read[c]; const before=R.board; R.board=R.read[c]+1;
+      t=`③ ${who} 擦掉白板，写上 ${R.board}。`;
+      if(lostNow){bad=true; R.lostN=(R.lostN||0)+(before-R.board+1); t+=` 可是白板刚才已经是 ${before} 了，他心里的 ${R.read[c]} 是旧数。${before===R.board?'写上去的数和原来一样，':''}别人那一笔被盖掉，漏记一道菜。`;
+        const w=$('wb'); w.classList.add('flash'); setTimeout(()=>w.classList.remove('flash'),900);}
+      R.read[c]=null; R.head[c]=null; $('d'+c).textContent='待命'; }
+    say(t,bad); logLine(t,bad?'bad':cls); render(c);
+    if(R.i>=R.steps.length) setTimeout(finish,Math.min(+$('rcSpeed').value,1200));
+  }
+  function finish(){
+    clearTimeout(R.timer); R.timer=null;
+    $('rcPause').disabled=true; $('rcStep').disabled=true; render(null);
+    const lost=R.made-(R.board-R.start), v=$('verdict'); v.hidden=false;
+    if(lost>0){v.className='verdict bad'; v.textContent=`一共做了 ${R.made} 道菜，白板只多记了 ${R.board-R.start} 道，漏记 ${lost} 道。原因都是一样的：两个人在同一个旧数上加 1。`;}
+    else if(R.key===null && R.steps.some(s=>s.k==='lock')){v.className='verdict ok'; v.textContent=`做了 ${R.made} 道，白板也记了 ${R.made} 道。加锁后“看、算、写”三步不会被别人插进来。`;}
+    else {v.className='verdict ok'; v.textContent='这次碰巧两人没撞上，一道都没漏。多跑几次就会出错，这正是竞态条件难排查的原因：时好时坏。';}
+  }
+  function loop(){ if(R.paused) return; step(); if(R.i<R.steps.length) R.timer=setTimeout(loop,+$('rcSpeed').value); }
+  function start(s){
+    clearTimeout(R.timer); Object.assign(R,{steps:s.steps,i:0,board:s.start,start:s.start,read:[null,null],head:[null,null],made:0,key:null,paused:false,lostN:0});
+    $('d0').textContent='待命'; $('d1').textContent='待命'; $('verdict').hidden=true; $('raceLog').innerHTML='';
+    $('rcPause').disabled=false; $('rcStep').disabled=false; $('rcPause').textContent='暂停';
+    say(s.start?`白板上现在写着 ${s.start}。两个厨师马上各做一道菜，白板应该变成 ${s.start+2}。`:'白板从 0 开始，两个厨师各做 5 道，应该记到 10。');
+    render(null); R.timer=setTimeout(loop,+$('rcSpeed').value);
+  }
+  $('rcSlow').onclick=()=>{$('rcSpeed').value='2600'; start(slowScript());};
+  $('rcNo').onclick=()=>start(randomScript(false));
+  $('rcLock').onclick=()=>start(randomScript(true));
+  $('rcPause').onclick=()=>{R.paused=!R.paused; $('rcPause').textContent=R.paused?'继续':'暂停'; if(!R.paused) loop(); else clearTimeout(R.timer);};
+  $('rcStep').onclick=()=>{R.paused=true; clearTimeout(R.timer); $('rcPause').textContent='继续'; step();};
+  render(null);
+
+  /* ---------- GIL timeline ---------- */
+  const lanes=document.getElementById('lanes'), total=document.getElementById('total'), note=document.getElementById('modeNote');
+  const modes={
+    tcpu:{t:16,note:'4 个线程轮流拿锅铲，任意时刻只有一条在算。总时间和单线程差不多，甚至因为切换更慢一点。',
+      lanes:[0,1,2,3].map(r=>[0,1,2,3].map(k=>({s:k*4+r,w:1,c:'cpu'})))},
+    pcpu:{t:4,note:'4 个进程各有一把锅铲，4 个核同时算。总时间接近原来的 1/4。',
+      lanes:[0,1,2,3].map(()=>[{s:0,w:4,c:'cpu'}])},
+    tio:{t:5,note:'每个任务大部分时间在等。等待时放下锅铲，其他线程马上接着用。等待重叠起来，总时间大幅缩短。',
+      lanes:[0,1,2,3].map(r=>[{s:r*.25,w:.25,c:'cpu'},{s:r*.25+.25,w:4,c:'wait'},{s:4.25+r*.25,w:.25,c:'cpu'}])},
+    aio:{t:5,note:'图和多线程几乎一样，但背后只有一个厨师。他点火后说一句 await，转身去点下一口锅，水开了再回来。没有线程切换的开销，任务数量上万也撑得住。',
+      lanes:[0,1,2,3].map(r=>[{s:r*.25,w:.25,c:'cpu'},{s:r*.25+.25,w:4,c:'wait'},{s:4.25+r*.25,w:.25,c:'cpu'}])}
+  };
+  const SCALE=16.5;
+  for(let r=0;r<4;r++){
+    const lane=document.createElement('div'); lane.className='lane';
+    lane.innerHTML=`<span class="lab">任务 ${r+1}</span><div class="track" id="tr${r}"></div>`;
+    lanes.appendChild(lane);
+  }
+  function show(m){
+    const M=modes[m];
+    M.lanes.forEach((segs,r)=>{
+      const tr=document.getElementById('tr'+r); tr.innerHTML='';
+      segs.forEach(s=>{const d=document.createElement('div'); d.className='seg '+s.c;
+        d.style.left=(s.s/SCALE*100)+'%'; d.style.width=(s.w/SCALE*100)+'%'; tr.appendChild(d);});
+    });
+    total.textContent=`总耗时 ≈ ${M.t} 个时间单位`;
+    note.textContent=M.note;
+    document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('on',b.dataset.mode===m));
+  }
+  document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>show(b.dataset.mode));
+  show('tcpu');
+
+  /* ---------- Code tabs ---------- */
+  document.querySelectorAll('[data-code]').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('[data-code]').forEach(x=>x.classList.toggle('on',x===b));
+    ['p1','p2','p3','p4','p5','p6','c4','c3'].forEach(id=>document.getElementById(id).hidden=id!==b.dataset.code);
+  });
+
+  /* ---------- Quiz ---------- */
+  document.querySelectorAll('.q').forEach(q=>{
+    const fb=q.querySelector('.fb');
+    q.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+      q.querySelectorAll('button').forEach(x=>x.classList.remove('right','wrong'));
+      const ok=b.dataset.v===q.dataset.ans;
+      b.classList.add(ok?'right':'wrong');
+      fb.textContent=ok?fb.dataset.ok:fb.dataset.no;
+    });
+  });
+})();
+</script>
+</body>
+</html>
